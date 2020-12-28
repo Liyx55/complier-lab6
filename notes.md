@@ -1,4 +1,4 @@
-# lab5 notes
+# lab6 各等级要求：
 ## LEVEL 1
 要求1
 + int char string
