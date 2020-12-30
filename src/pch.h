@@ -1,15 +1,21 @@
-#include <assert.h>
-#include <cctype>
-#include <cmath>
-#include <cstdarg>
+#ifndef PCH_H
+#define PCH_H
+
 #include <cstdio>
-#include <cstdlib>
+#include <cmath>
+#include <cctype>
 #include <cstring>
-#include <fstream>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdlib>
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <list>
+#include <assert.h>
+#include <iomanip>
 #include <map>
 #include <stack>
-#include <string>
 #include <unordered_map>
-using namespace std;
+
+#endif

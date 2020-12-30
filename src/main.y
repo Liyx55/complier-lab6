@@ -1,1231 +1,416 @@
 %{
     #include "common.h"
+    class TreeNode;
     TreeNode* root;
-    extern int lineNo;
-    extern int Lloop;
-    extern int tErr;
-    extern stack<TreeNode*> inFunc;
-    bool isNTS(Type* t) { return t->type == NOT_SURE; }
-    int yyerror(char const*);  
+    extern int lineno;
+    Scope *scope = new Scope();
+    Scope *scope_out = new Scope();
+    Callable *currFunc = nullptr;
+    int currFuncCount = 0;
+    map<Callable*, list<Symbol*>> funcTable;
+    Symbol::ValueType currentType = Symbol::VALUE_NONE;
+    Symbol::ValueType currentFunType = Symbol::VALUE_NONE;
     int yylex();
+    int yyerror( char const * );
 %}
+%union {
+  string *value;
+  Symbol *symbol;
+  TreeNode *node;
+}
 
-// OPs
-%token T_AND  T_ASS  T_DIV   T_DIVE T_EQ
-%token T_LA   T_LAE  T_LE    T_LEE  T_MINE
-%token T_MINS T_MOD  T_MODE  T_MUL  T_MULE
-%token T_NOT  T_NOTE T_OR    T_PLUE T_PLUS
-%token ID
-// consts(value)
-%token BOOL    CHAR    INT     STRING
-// keys
-%token BREAK   CONST   CONTINUE ELSE    FOR
-%token IF      MAIN    RETURN   TYPE    WHILE
-// special mark
-%token COMA
-%token LBRAC RBRAC
-%token LPATH RPATH
-%token SEMI
-// i/o
-%token CHAR_IN  INT_IN  STR_IN
-%token CHAR_OUT INT_OUT STR_OUT
-%start StartProg
-%% 
+%token T_CHAR T_INT T_STRING T_BOOL T_VOID T_DOUBLE T_ARRAY
 
-Assign
-: Lval T_ASS BOOL {
-    $1->bval = $3->bval;
-    $1->ival = $3->bval ? 1 : 0;
-    $1->cval = (char)$1->ival;
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_ASS;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_ASS CHAR {
-    $1->cval = $3->cval;
-    $1->ival = (int)$1->cval;
-    $1->bval = $1->ival == 0 ? 0 : 1;
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_ASS;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_ASS CHAR_IN LPATH RPATH {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "input";
-    node->type = TYPE_CHAR;
-    if (*($1->type) != *(node->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;   
-    node->addChild($1); 
-    $$ = node;
-}
-| Lval T_ASS Exp {
-    $1->ival = $3->ival;
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_ASS;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_ASS INT_IN LPATH RPATH {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "input";
-    node->type = TYPE_INT;
-    if (*($1->type) != *(node->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    $$ = node;
-}
-| Lval T_ASS STRING {
-    $1->sval = $3->sval;
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_ASS;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_ASS STR_IN LPATH RPATH {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "input";
-    node->type = TYPE_STRING;
-    if (*($1->type) != *(node->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    $$ = node;
-}
-| Lval T_DIVE Exp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_DIVE;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_MINE Exp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_MINE;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_MODE Exp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_MODE;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_MULE Exp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_MULE;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-| Lval T_PLUE Exp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_PLUE;
-    node->type = $3->type;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $3->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $1->varName << ">" << endl;
-    }
-    else
-        $1->type = $3->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
+%token K_IF K_ELSE K_WHILE K_FOR K_SKIP K_BREAK K_CASE K_CONTINUE K_DEFAULT K_RET K_SWITCH
+
+%token LOP_DADD LOP_DSUB
+
+%token LOP_ADD LOP_SUB LOP_MULT LOP_DEV LOP_MOD
+
+%token LOP_NOT LOP_BNOT
+
+%token LOP_AND LOP_OR LOP_BOR LOP_BAND LOP_XOR 
+
+%token QM COLON
+
+%token LOP_EQ LOP_NEQ LOP_L LOP_LEQ LOP_S LOP_SEQ 
+
+%token LOP_SHL LOP_SHR
+
+%token LOP_ADDASS LOP_SUBASS LOP_MULTASS LOP_DEVASS LOP_MODASS LOP_ASSIGN
+
+%token SEMICOLON
+
+%token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET
+
+%token <symbol> SYMBOL
+%token <value> IDENTIFIER
+
+%right COMMA
+%right LOP_NOT LOP_BNOT
+%left LOP_SHL LOP_SHR
+%left LOP_MUL LOP_DIV LOP_MOD
+%left LOP_ADD LOP_SUB
+%left LOP_SEQ LOP_S LOP_LEQ LOP_L LOP_EQ LOP_NEQ
+%left LOP_AND LOP_OR
+%right LOP_ADDASS LOP_SUBASS LOP_MULTASS LOP_DEVASS LOP_MODASS LOP_ASSIGN
+%nonassoc IFX
+%right UMINUS UADD
+%right K_ELSE
+
+%type <node> declaration IDLIST assignment ID_ASS call_args args
+%type <node> and_expr as_expr band_expr bor_expr comp_expr or_expr sh_expr xor_expr term factor bool_expression
+%type <node> expr if_stmt if_else_stmt for_stmt while_stmt return_stmt def_func
+%type <node> statement program program_empty 
+
+
+%%
+
+start 
+: program {
+    root = $1;
 }
 ;
-
-Block
-:  LBRAC BlockItem RBRAC {
-    if ($2 == nullptr)
-        $$ = nullptr;
-    else
-    {
-        TreeNode* node = new TreeNode($2->lineNo, NODE_STMT);
-        node->stmtType = STMT_BLCK;
-        node->addChild($2);
-        $$ = node;
-    }  
-}
-;
-
-BlockItem
-: Decl BlockItem {
-    $1->addSibling($2);
+program 
+: program statement {
+    ($1) -> addSibling($2);
     $$ = $1;
 }
-| Stmt BlockItem {
-    $1->addSibling($2);
-    $$ = $1;
-}
-| {
-    $$ = nullptr;
-}
-;
-
-CompUnit
-: Decl {
-    $$ = $1;
-}
-| Decl CompUnit {
-    $1->addSibling($2);
-    $$ = $1;
-}
-| FuncDef {
-    $$ = $1;
-}
-| FuncDef CompUnit {
-    $1->addSibling($2);
+| statement {
     $$ = $1;
 }
 ;
 
-Cond
-: LOrExp {
+program_empty 
+: program {
     $$ = $1;
+}
+| %empty {
+    $$ = new EmptyNode(lineno);
+  }
+;
+
+LB_SCOPE
+: LBRACE {
+    scope->pushScope();
 }
 ;
 
-ConstDecl
-: CONST TYPE ConstDef ConstRest SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_DECL;
-    node->addChild($1);
-    node->addChild($2);
-    if (*($2->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $2->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $3->child->varName << ">" << endl;
+bool_expression 
+: expr {$$ = new OperatorNode(lineno,OperatorNode::OP_BOOL,{$1});
+}
+;
+
+statement
+: declaration SEMICOLON {$$ = $1;}
+| expr SEMICOLON {$$ = $1;}
+| LB_SCOPE program RBRACE {
+    $$ = new StmtNode($2->lineno,StmtNode::STMT_SCOPE);
+    $$ -> addChild($2);
+    scope_out->pushScope(scope->popScope());
+}
+| return_stmt {$$ = $1;}
+| if_stmt {$$ = $1;}
+| if_else_stmt {$$ = $1;}
+| while_stmt {$$ = $1;}
+| for_stmt {$$ = $1;}
+| def_func {$$=$1;}
+;
+
+call_args
+: args {$$ = $1;}
+| call_args COMMA args {$$=$1;$$->addSibling($3);}
+
+args
+: IDENTIFIER {
+    auto symbol = scope->findSymbol(*$1);
+    if (symbol == nullptr) {
+      std::cerr << "Line " << lineno << ": symbol " << *$1 << " is not defined." << endl;
+      exit(1);
+      return -1;
     }
-    else
-    {
-        $3->type = $2->type;
-        $3->child->isConst = true;
-    }  
-    node->addChild($3);
-    TreeNode* p = $4;
-    while (p != nullptr)
-    {
-        if (*($2->type) != *(p->type))
-        {
-            tErr++;
-            cout << "error @" << $1->lineNo << ": ";
-            cout << "cannot match type <";
-            cout << $2->type->getTypeInfo() << "> ";
-            cout << "to identifier <";
-            cout << p->child->varName << ">" << endl;
-        }
-        else
-        {
-            p->type = $2->type;
-            p->child->isConst = true;
-        }
-        p = p->rsib;
-    }
-    node->addChild($4);
-    $$ = node;
+    $$ = new ExprNode(lineno, symbol);
 }
 ;
 
-ConstDef
-: ID T_ASS ConstInitVal {
-    $1->type = $3->type;
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_ASS;
-    node->type = $1->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
+def_func
+: T IDENTIFIER LPAREN call_args RPAREN LB_SCOPE program_empty RBRACE {
+    Callable* symbol = new Callable(currentFunType, *$2);
+    scope->insertSymbol(*$2, $7->lineno, symbol);
+    currFunc = symbol;
+    $$ = new FunStmtNode($7->lineno, symbol, {$7});
+    scope_out->pushScope(scope->getScopeStack().front());
+}
+| T IDENTIFIER LPAREN RPAREN LB_SCOPE program_empty RBRACE {
+    Callable* symbol = new Callable(currentFunType, *$2);
+    scope->insertSymbol(*$2, $6->lineno, symbol);
+    currFunc = symbol;
+    $$ = new FunStmtNode($6->lineno, symbol, {$6});
+    scope_out->pushScope(scope->getScopeStack().front());
 }
 ;
 
-ConstInitVal
-: BOOL {
-    $$ = $1;
-}
-| CHAR {
-    $$ = $1;
-}
-| Exp {
-    $$ = $1;
-}
-| STRING {
-    $$ = $1;
+return_stmt
+:  K_RET expr SEMICOLON {
+    $$ = new StmtNode($2->lineno,StmtNode::STMT_RETURN, {$2});
 }
 ;
 
-ConstRest
-: COMA ConstDef ConstRest {
-    $2->addSibling($3);
+declaration
+: T IDLIST {
     $$ = $2;
 }
-| {
-    $$ = nullptr;
-}
 ;
 
-Decl
-: ConstDecl {
-    $$ = $1;
-}
-| VarDecl {
-    $$ = $1;
-}
+IDLIST
+: ID_ASS {$$ = $1;}
+| IDLIST COMMA ID_ASS {$$=$1;$$->addSibling($3);}
 ;
-
-EqExp
-: EqExp T_EQ RelExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_EQ;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
+ID_ASS
+: IDENTIFIER LOP_ASSIGN expr{
+    Symbol* symbol = new Variable(currentType, *$1);
+    bool ok = scope->insertSymbol(*$1, $3->lineno, symbol);
+    if (!ok)  {
+      cerr << "Line " << lineno << ": symbol " << *$1 << " has already been declared." << endl;
+      exit(1);
+      return -1;
     }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
+    $$ = new DeclNode($3->lineno, symbol);
+    $$ -> addChild($3);
+}
+| IDENTIFIER {
+    Symbol* symbol = new Variable(currentType, *$1);
+    bool ok = scope->insertSymbol(*$1, lineno, symbol);
+    if (!ok)  {
+      cerr << "Line " << lineno << ": symbol " << *$1 << " has already been declared." << endl;
+      exit(1);
+      return -1;
     }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
+    $$ = new DeclNode(lineno, symbol);
+}
+| IDENTIFIER LBRACKET SYMBOL RBRACKET {
+    Symbol* symbol = new Variable(Symbol::VALUE_ARRAY , *$1);
+    bool ok = scope->insertSymbol(*$1 , lineno , symbol);
+    if (!ok)  {
+      cerr << "Line " << lineno << ": symbol " << *$1 << " has already been declared." << endl;
+      exit(1);
+      return -1;
     }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| EqExp T_NOTE RelExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_NOTE;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| RelExp {
-    $$ = $1;
+    auto var = new DeclNode(lineno , symbol);
+    var -> setArrayLength($3->value);
+    $$ = var;
 }
 ;
 
-Exp
-: Cond {
-    $$ = $1;
+if_else_stmt
+: K_IF LPAREN bool_expression RPAREN statement K_ELSE statement{
+    $$ = new StmtNode($3->lineno,StmtNode::STMT_IF_ELSE, {$3, $5, $7});
 }
-| LowExp {
-    $$ = $1;
+;
+if_stmt
+: K_IF LPAREN bool_expression RPAREN statement %prec IFX{
+    $$ = new StmtNode($3->lineno,StmtNode::STMT_IF, {$3, $5});
 }
 ;
 
-ForEnd
-: Assign {
+while_stmt
+: K_WHILE LPAREN bool_expression RPAREN statement{
+    $$ = new StmtNode($3->lineno,StmtNode::STMT_WHILE, {$3, $5});
+}
+;
+for_stmt
+: K_FOR LPAREN expr SEMICOLON bool_expression SEMICOLON expr RPAREN statement{
+    $$ = new StmtNode($3->lineno,StmtNode::STMT_FOR, {$3, $5, $7, $9});
+}
+| K_FOR LPAREN declaration SEMICOLON bool_expression SEMICOLON expr RPAREN statement{
+    $$ = new StmtNode($3->lineno,StmtNode::STMT_FOR, {$3, $5, $7, $9});
+}
+;
+
+expr
+: assignment {$$ = $1;}
+| expr LPAREN expr RPAREN{
+    $$ = new FuncCallNode($1->lineno, $1->symbol, {$3});
+}
+| expr COMMA assignment {
+    $1 -> addSibling($3);
     $$ = $1;
 }
-| {
-    TreeNode* node = new TreeNode(lineNo, NODE_KEY);
-    node->varName = "forend";
-    $$ = node;
+| %empty{
+    $$ = new EmptyNode(lineno);
 }
 ;
 
-ForHead
-: Assign SEMI {
-    $$ = $1;
+assignment
+: assignment LOP_ASSIGN assignment{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_ASSIGN, {$3, $1});
 }
-| Decl {
-    $$ = $1;
+| assignment LOP_ADDASS assignment{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_ADDASS, {$3, $1});
 }
-| ID SEMI {
-    $$ = $1;
+| assignment LOP_SUBASS assignment{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_SUBASS, {$3, $1});
 }
-| SEMI {
-    TreeNode* node = new TreeNode(lineNo, NODE_KEY);
-    node->varName = "forhead";
-    $$ = node;
+| assignment LOP_MULTASS assignment{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_MULTASS, {$3, $1});
 }
+| assignment LOP_DEVASS assignment{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_DEVASS, {$3, $1});
+}
+| assignment LOP_MODASS assignment{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_MODASS, {$3, $1});
+}
+| or_expr{ $$ = $1; }
 ;
-
-ForMid
-: Cond SEMI {
-    $$ = $1;
+or_expr
+: or_expr LOP_OR and_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_OR, {$1, $3});
 }
-| SEMI {
-    TreeNode* node = new TreeNode(lineNo, NODE_KEY);
-    node->varName = "formid";
-    $$ = node;
-}
+| and_expr { $$ = $1;}
 ;
-
-FuncDef
-: TYPE MAIN LPATH FuncFParams RPATH { inFunc.push($1); } Block {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_PROG);
-    node->addChild($1);
-    node->addChild($2);
-    node->addChild($4);
-    node->addChild($7);
-    $$ = node;
-    inFunc.pop();
+and_expr
+: and_expr LOP_AND bor_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_AND, {$1, $3});
 }
-| TYPE ID LPATH FuncFParams RPATH { inFunc.push($1); } Block {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_PROG);
-    node->addChild($1);
-    node->addChild($2);
-    node->addChild($4);
-    node->addChild($7);
-    $$ = node;
-    inFunc.pop();
-}
+| bor_expr { $$ = $1;}
 ;
-
-FuncFParam
-: TYPE ID {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_PARM);
-    node->addChild($1);
-    node->addChild($2);
-    $$ = node;
+bor_expr
+: bor_expr LOP_BOR bor_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_BOR, {$1, $3});
 }
+| xor_expr { $$ = $1;}
 ;
-
-FuncFParams
-: FuncFParam FuncFRest {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_PARM;
-    node->addChild($1);
-    node->addChild($2);
-    $$ = node;
+xor_expr
+: xor_expr LOP_XOR band_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_XOR, {$1, $3});
 }
-| {
-    $$ = nullptr;
-}
+| band_expr { $$ = $1;}
 ;
-
-FuncFRest
-: COMA FuncFParam FuncFRest {
-    $2->addSibling($3);
+band_expr
+: band_expr LOP_BAND comp_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_BAND, {$1, $3});
+}
+| comp_expr { $$ = $1;}
+;
+comp_expr
+: comp_expr LOP_EQ sh_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_EQ, {$1, $3});
+}
+| comp_expr LOP_NEQ sh_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_NEQ, {$1, $3});
+}
+| comp_expr LOP_LEQ sh_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_LEQ, {$1, $3});
+}   
+| comp_expr LOP_SEQ sh_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_SEQ, {$1, $3});
+}   
+| comp_expr LOP_L sh_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_L, {$1, $3});
+}
+| comp_expr LOP_S sh_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_S, {$1, $3});
+}
+| sh_expr { $$ = $1; }   
+;
+sh_expr
+: sh_expr LOP_SHL as_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_SHL, {$1, $3});
+}
+| sh_expr LOP_SHR as_expr{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_SHR, {$1, $3});
+}
+| as_expr { $$ = $1 ;}
+;
+as_expr
+: as_expr LOP_ADD term{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_ADD, {$1, $3});
+}
+| as_expr LOP_SUB term{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_SUB, {$1, $3});
+}
+| term {$$=$1;}
+;
+term      
+:term LOP_MULT factor{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_MULT, {$1, $3});
+}
+| term LOP_DEV factor{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_DEV, {$1, $3});
+}
+| term LOP_MOD factor{
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_MOD, {$1, $3});
+}
+| term LOP_DADD {
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_DADD, {$1});
+}
+| term LOP_DSUB {
+    $$ = new OperatorNode($1->lineno, OperatorNode::OP_DSUB, {$1});
+}
+| LOP_DADD term {
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_DADD, {$2});
+}
+| LOP_DSUB term {
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_DSUB, {$2});
+}
+| LOP_BAND term{
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_TADDR, {$2});
+}
+| factor {$$ = $1;}
+;
+factor
+: LPAREN expr RPAREN{
     $$ = $2;
 }
-| {
-    $$ = nullptr;
+| IDENTIFIER {
+    auto symbol = scope->findSymbol(*$1);
+    if (symbol == nullptr) {
+      std::cerr << "Line " << lineno << ": symbol " << *$1 << " is not defined." << endl;
+      exit(1);
+      return -1;
+    }
+    $$ = new ExprNode(lineno, symbol);
+}
+| IDENTIFIER LBRACKET expr RBRACKET {
+    auto symbol = scope->findSymbol(*$1);
+    if (symbol == nullptr) {
+      std::cerr << "Line " << lineno << ": symbol " << *$1 << " is not defined." << endl;
+      exit(1);
+      return -1;
+    }
+    $$ = new ExprNode (lineno, symbol);
+    $$ -> addSibling ($3);
+}
+| LOP_NOT term{
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_NOT, {$2});
+}
+| LOP_BNOT term{
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_BNOT, {$2});
+}
+| LOP_ADD term %prec UADD{
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_ADD, {$2});
+}
+| LOP_SUB term %prec UMINUS{
+    $$ = new OperatorNode($2->lineno, OperatorNode::OP_UMINUS, {$2});
+}
+| SYMBOL {
+    $$ = new ExprNode(lineno, $1);
 }
 ;
 
-HighExp
-: HighExp T_DIV UnaryExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_DIV;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| HighExp T_MOD UnaryExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_MOD;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| HighExp T_MUL UnaryExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_MUL;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-} 
-| UnaryExp {
-    $$ = $1;
-}
-;
-
-IfRest
-: ELSE IF LPATH Cond RPATH Stmt IfRest {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_COND;
-    node->addChild($1);
-    node->addChild($4);
-    node->addChild($6);
-    node->addChild($7);
-    $$ = node;
-}
-| ELSE Stmt {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_COND;
-    node->addChild($1);
-    node->addChild($2);
-    $$ = node;
-}
-| {
-    $$ = nullptr;
-}
-;
-
-IO
-: CHAR_OUT LPATH CHAR RPATH SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "output";
-    node->addChild($3);
-    $$ = node;
-}
-| CHAR_OUT LPATH ID RPATH SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "output";
-    $3->type = TYPE_CHAR;
-    node->addChild($3);
-    $$ = node;    
-}
-| CHAR_OUT LPATH INT RPATH SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "output";
-    $3->type = TYPE_CHAR;
-    node->addChild($3);
-    $$ = node;    
-}
-| INT_OUT LPATH Exp RPATH SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "output";
-    $3->type = TYPE_INT;
-    node->addChild($3);
-    $$ = node;
-}
-| STR_OUT LPATH ID RPATH SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "output";
-    node->addChild($3);
-    $$ = node;
-}
-| STR_OUT LPATH STRING RPATH SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_IO;
-    node->varName = "output";
-    node->addChild($3);
-    $$ = node;
-}
-;
-
-LAndExp
-: EqExp {
-    $$ = $1;
-}
-| LAndExp T_AND EqExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_AND;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    node->type = $1->type;
-    $$ = node;
-}
-;
-
-LOrExp
-: LAndExp {
-    $$ = $1;
-}
-| LAndExp T_OR LOrExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_OR;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-;
-
-LowExp
-: HighExp {
-    $$ = $1;
-}
-| LowExp T_PLUS HighExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_PLUS;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| LowExp T_MINS HighExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_MINS;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-;
-
-Lval
-: ID {
-    $$ = $1;
-}
-;
-
-PrimaryExp
-: LPATH Cond RPATH {
-    $$ = $2;
-}
-| LPATH Exp RPATH {
-    $$ = $2;
-}
-| INT {
-    $$ = $1;
-}
-| Lval {
-    $$ = $1;
-}
-;
-
-RelExp
-: LowExp {
-    $$ = $1;
-}
-| RelExp T_LA LowExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_LA;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| RelExp T_LAE LowExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_LAE;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| RelExp T_LE LowExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_LE;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-| RelExp T_LEE LowExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = OP_LEE;
-    if (*($1->type) != *($3->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot calculate type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "with <";
-        cout << $3->type->getTypeInfo() << ">" << endl;
-    }
-    if (!isNTS($1->type))
-    {
-        $3->type = $1->type;
-        node->type = $1->type;
-    }
-    else
-    {
-        $1->type = $3->type;
-        node->type = $3->type;   
-    }
-    node->addChild($1);
-    node->addChild($3);
-    $$ = node;
-}
-;
-
-StartProg
-: CompUnit {
-    root = new TreeNode(0, NODE_PROG);
-    root->addChild($1);
-}
-;
-
-Stmt
-: Assign SEMI {
-    $$ = $1;
-}
-| Block {
-    $$ = $1;
-}
-| BREAK SEMI {
-    if (Lloop == 0)
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "<break> must be in loop" << endl;
-    }
-    $$ = $1;
-}
-| CONTINUE SEMI {
-    if (Lloop == 0)
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "<continue> must be in loop" << endl;
-    }
-    $$ = $1;
-}
-| Exp SEMI {
-    $$ = $1;
-}
-| FOR { Lloop++; } LPATH ForHead ForMid ForEnd RPATH Stmt {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_LOOP;
-    node->addChild($1);
-    node->addChild($4);
-    node->addChild($5);
-    node->addChild($6);
-    node->addChild($8);
-    $$ = node;
-    Lloop--;
-}
-| IF LPATH Cond RPATH Stmt IfRest {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_COND;
-    node->addChild($3);
-    node->addChild($5);
-    node->addChild($6);
-    $$ = node;
-}
-| IO {
-    $$ = $1;
-}
-| RETURN SEMI {
-    if (inFunc.empty())
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "<return> must be in function\n";
-    }
-    else if (*(inFunc.top()->type) != *(TYPE_VOID))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "type <void> cannot match with ";
-        cout << "<" << inFunc.top()->type->getTypeInfo();
-        cout << ">\n";
-    }
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_RET;
-    $$ = node;
-}
-| RETURN Exp SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_RET;
-    node->addChild($2);
-    $$ = node;
-    if (inFunc.empty())
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "<return> must be in function\n";
-    }
-    else if (*(inFunc.top()->type) != *($2->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "type <" << $2->type->getTypeInfo();
-        cout << "> cannot match with ";
-        cout << "<" << inFunc.top()->type->getTypeInfo();
-        cout << ">\n";
-    }
-}
-| SEMI {
-    $$ = nullptr;
-}
-| WHILE { Lloop++; } LPATH Cond RPATH Stmt {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_LOOP;
-    node->addChild($1);
-    node->addChild($4);
-    node->addChild($6);
-    $$ = node;
-    Lloop--;
-}
-;
-
-UnaryExp
-: PrimaryExp {
-    $$ = $1;
-}
-| UnaryOp UnaryExp {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_EXPR);
-    node->opType = $1->opType;
-    node->type = $2->type;
-    node->addChild($2);
-    $$ = node;
-}
-;
-
-UnaryOp
-: T_MINS {
-    TreeNode* node = new TreeNode(lineNo, NODE_OP);
-    node->opType = OP_MINS;
-    $$ = node;
-}
-| T_NOT {
-    TreeNode* node = new TreeNode(lineNo, NODE_OP);
-    node->opType = OP_NOT;
-    $$ = node;
-}
-| T_PLUS {
-    TreeNode* node = new TreeNode(lineNo, NODE_OP);
-    node->opType = OP_PLUS;
-    $$ = node;  
-}
-;
-
-VarDecl
-: TYPE VarDef VarRest SEMI {
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_DECL;
-    node->addChild($1);
-    if (*($1->type) != *($2->type))
-    {
-        tErr++;
-        cout << "error @" << $1->lineNo << ": ";
-        cout << "cannot match type <";
-        cout << $1->type->getTypeInfo() << "> ";
-        cout << "to identifier <";
-        cout << $2->child->varName << ">" << endl;
-    }
-    else
-        $2->type = $1->type;          
-    node->addChild($2);
-    TreeNode* p = $3;
-    while (p != nullptr)
-    {
-        if (*($1->type) != *(p->type))
-        {
-            tErr++;
-            cout << "error @" << $1->lineNo << ": ";
-            cout << "cannot match type <";
-            cout << $1->type->getTypeInfo() << "> ";
-            cout << "to identifier <";
-            cout << p->child->varName << ">" << endl;
-        }
-        else
-            p->type = $1->type;
-        p = p->rsib;
-    }
-    node->addChild($3);
-    $$ = node;
-}
-;
-
-VarDef
-: ID {
-    $$ = $1;
-}
-| ID T_ASS VarInitVal {
-    $1->type = $3->type;
-    TreeNode* node = new TreeNode($1->lineNo, NODE_STMT);
-    node->stmtType = STMT_ASS;
-    node->opType = OP_ASS;
-    node->type = $1->type;
-    node->addChild($1);
-    node->addChild($3);
-    node->bval = true;
-    $$ = node;
-}
-;
-
-VarInitVal
-: BOOL {
-    $$ = $1;
-}
-| CHAR {
-    $$ = $1;
-}
-| Exp {
-    $$ = $1;
-}
-| STRING {
-    $$ = $1;
-}
-;
-
-VarRest
-: COMA VarDef VarRest {
-    $2->addChild($3);
-    $$ = $2;
-}
-| {
-    $$ = nullptr;
-}
+T
+: T_INT { currentType = Symbol::VALUE_INT; if(scope->getScopeStack().size()==1) currentFunType = currentType;}
+| T_CHAR { currentType = Symbol::VALUE_CHAR; if(scope->getScopeStack().size()==1) currentFunType = currentType;}
+| T_BOOL {currentType = Symbol::VALUE_BOOL; if(scope->getScopeStack().size()==1) currentFunType = currentType;}
+| T_VOID { currentType = Symbol::VALUE_VOID; if(scope->getScopeStack().size()==1) currentFunType = currentType; }
+| T_STRING { currentType = Symbol::VALUE_STRING; if(scope->getScopeStack().size()==1) currentFunType = currentType;}
+| T_DOUBLE { currentType = Symbol::VALUE_DOUBLE; if(scope->getScopeStack().size()==1) currentFunType = currentType; }
 ;
 
 %%
 
 int yyerror(char const* message)
 {
-    cout << message << " at line " << lineNo << endl;
-    return -1;
+  cout << message << " at line " << lineno << endl;
+  return -1;
 }
